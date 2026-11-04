@@ -24,6 +24,7 @@ from google import genai
 from google.genai import errors, types
 
 import fb_post
+import medium_sync
 
 load_dotenv()
 
@@ -57,6 +58,21 @@ def get_recent_posts(limit: int = 15) -> str:
         f"[{p.get('created_time', '')[:10]}] {p.get('message', '(intet tekstindhold)')[:300]}"
         for p in posts
     )
+
+
+def sync_medium() -> str:
+    """Henter nye artikler fra brugerens Medium-profil ned i artikel-biblioteket.
+    Kald dette først, så du arbejder med de nyeste artikler."""
+    print("🔧 Henter artikler fra Medium...")
+    if not os.getenv("MEDIUM_USERNAME"):
+        return "MEDIUM_USERNAME er ikke sat – bruger kun de lokale artikler."
+    try:
+        changes = medium_sync.sync()
+    except Exception as e:
+        return f"Kunne ikke hente fra Medium ({e}) – bruger de lokale artikler."
+    for c in changes:
+        print(f"   {c}")
+    return "\n".join(changes) if changes else "Ingen nye artikler på Medium."
 
 
 def list_articles() -> str:
@@ -152,15 +168,16 @@ def build_system_prompt() -> str:
 {profile}
 
 Sådan arbejder du:
-1. Kald get_recent_posts for at se hvad der allerede er skrevet.
+1. Kald sync_medium og get_recent_posts.
 2. Kald list_articles. Sidens egne artikler er din primære kilde.
    - Har brugeren givet et emne: find den artikel der passer bedst.
-   - Ellers: vælg en artikel og en vinkel der ikke er dækket i de seneste opslag.
+   - Ellers: prioritér nye artikler, som siden endnu ikke har lavet opslag om.
+     Ellers vælg en artikel og en vinkel der ikke er dækket i de seneste opslag.
      Én artikel kan give mange opslag med forskellige vinkler (et tal, en
      anekdote, en parallel til i dag).
 3. Kald read_article og byg opslaget på artiklens indhold.
-   Brug kun research_topic hvis artiklen ikke dækker emnet, eller et faktum
-   skal tjekkes. Opfind aldrig tal.
+   Brug kun research_topic hvis artiklen ikke dækker emnet, er markeret
+   "delvis", eller et faktum skal tjekkes. Opfind aldrig tal.
 4. Skriv opslaget efter sidens tone og format. Hvis artiklen har en url,
    så giv den med som link i publish_post.
 5. Kald publish_post med teksten. Post aldrig uden at kalde publish_post.
@@ -188,7 +205,7 @@ def _run_with_model(model: str, task: str) -> None:
         model=model,
         config=types.GenerateContentConfig(
             system_instruction=build_system_prompt(),
-            tools=[get_recent_posts, list_articles, read_article,
+            tools=[sync_medium, get_recent_posts, list_articles, read_article,
                    research_topic, publish_post],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(
                 maximum_remote_calls=20
