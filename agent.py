@@ -18,6 +18,7 @@ import os
 import sys
 import threading
 import time
+from urllib.parse import unquote
 from datetime import date
 from pathlib import Path
 
@@ -137,9 +138,18 @@ def publish_post(message: str, link: str = "") -> str:
     nyt udkast og kald publish_post igen.
 
     Args:
-        message: Den færdige tekst til opslaget.
+        message: Den færdige tekst til opslaget. Skriv IKKE url'en i teksten –
+            giv den i link, så viser Facebook den som et kort med billede.
         link: Valgfri URL der skal deles med opslaget.
     """
+    if link:
+        # Fjern url'en fra teksten (rå eller %-kodet) – Facebook viser den som kort
+        for u in {link, unquote(link)}:
+            message = message.replace(u, "")
+        message = "\n".join(l.rstrip() for l in message.splitlines())
+        while "\n\n\n" in message:
+            message = message.replace("\n\n\n", "\n\n")
+        message = message.strip()
     print("\n" + "=" * 60)
     print(message)
     if link:
@@ -187,7 +197,8 @@ Sådan arbejder du:
    Brug kun research_topic hvis artiklen ikke dækker emnet, er markeret
    "delvis", eller et faktum skal tjekkes. Opfind aldrig tal.
 4. Skriv opslaget efter sidens tone og format. Hvis artiklen har en url,
-   så giv den med som link i publish_post.
+   så giv den som link-parameter i publish_post – skriv den ikke i teksten.
+   Afslut gerne med en kort opfordring som "Læs hele artiklen 👇".
 5. Kald publish_post med teksten. Post aldrig uden at kalde publish_post.
 6. Følg svaret fra publish_post: ret og prøv igen, eller stop.
 Svar til sidst med én kort linje om hvad der skete."""
@@ -273,9 +284,9 @@ def main():
     global client
     # Læser GEMINI_API_KEY fra miljøet. Prøver selv igen ved overbelastning.
     client = genai.Client(http_options=types.HttpOptions(
-        timeout=90_000,  # ms – giv op på et kald efter 90 sek.
+        timeout=60_000,  # ms – giv op på et kald efter 60 sek.
         retry_options=types.HttpRetryOptions(
-            attempts=3, initial_delay=3, max_delay=20,
+            attempts=2, initial_delay=3, max_delay=10,
             http_status_codes=[429, 500, 503, 504],
         )
     ))
