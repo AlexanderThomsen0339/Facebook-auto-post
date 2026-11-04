@@ -16,6 +16,8 @@ Kræver i .env:
 import argparse
 import os
 import sys
+import threading
+import time
 from datetime import date
 from pathlib import Path
 
@@ -32,6 +34,8 @@ MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 # Reservemodeller hvis hovedmodellen er overbelastet (503/429). Kommasepareret.
 FALLBACK_MODELS = [m.strip() for m in os.getenv(
     "GEMINI_FALLBACK_MODELS", "gemini-flash-lite-latest").split(",") if m.strip()]
+# Hvor meget modellen "tænker" før den svarer: low er hurtigst. Sæt tom for modellens standard.
+THINKING_LEVEL = os.getenv("GEMINI_THINKING", "low")
 PROFILE_PATH = Path(__file__).with_name("page_profile.md")
 ARTICLES_DIR = Path(__file__).with_name("articles")
 DRY_RUN = False
@@ -145,7 +149,11 @@ def publish_post(message: str, link: str = "") -> str:
     if DRY_RUN:
         return "Dry-run: opslaget blev ikke postet. Stop her."
 
-    answer = input("\nPost dette? [j]a / [n]ej / eller skriv rettelser: ").strip()
+    WAITING_FOR_USER.set()
+    try:
+        answer = input("\nPost dette? [j]a / [n]ej / eller skriv rettelser: ").strip()
+    finally:
+        WAITING_FOR_USER.clear()
     if answer.lower() in ("j", "ja", "y", "yes"):
         try:
             result = fb_post.post_text(message, link or None)
@@ -185,25 +193,56 @@ Sådan arbejder du:
 Svar til sidst med én kort linje om hvad der skete."""
 
 
+WAITING_FOR_USER = threading.Event()  # pauser hjerteslaget mens brugeren svarer
+
+
+class Heartbeat:
+    """Skriver løbende hvor længe vi har ventet, så man kan se agenten lever."""
+    def __init__(self, label: str):
+        self.label, self._stop = label, threading.Event()
+
+    def __enter__(self):
+        self.start = time.time()
+        def beat():
+            while not self._stop.wait(10):
+                if WAITING_FOR_USER.is_set():
+                    continue
+                print(f"   ⏳ {self.label} ({int(time.time() - self.start)} s)...", flush=True)
+        threading.Thread(target=beat, daemon=True).start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+
+
 def run(topic: str | None) -> None:
     global MODEL
     task = f"Lav et opslag om: {topic}" if topic else "Find selv et emne og lav et opslag."
     for model in [MODEL, *FALLBACK_MODELS]:
         MODEL = model  # research_topic bruger samme model
         try:
-            _run_with_model(model, task)
+            try:
+                _run_with_model(model, task, THINKING_LEVEL)
+            except errors.ClientError as e:
+                # Nogle modeller understøtter ikke thinking_level – prøv uden
+                if e.code == 400 and THINKING_LEVEL and "thinking" in str(e).lower():
+                    _run_with_model(model, task, "")
+                else:
+                    raise
             return
         except errors.APIError as e:
-            if e.code not in (429, 500, 503):
+            if e.code not in (429, 500, 503, 504):
                 raise
             print(f"⚠️  {model} er utilgængelig ({e.code}). Prøver næste model...")
     sys.exit("Alle modeller er overbelastede lige nu. Prøv igen om lidt.")
 
 
-def _run_with_model(model: str, task: str) -> None:
+def _run_with_model(model: str, task: str, thinking_level: str) -> None:
     chat = client.chats.create(
         model=model,
         config=types.GenerateContentConfig(
+            thinking_config=(types.ThinkingConfig(thinking_level=thinking_level)
+                             if thinking_level else None),
             system_instruction=build_system_prompt(),
             tools=[sync_medium, get_recent_posts, list_articles, read_article,
                    research_topic, publish_post],
@@ -213,7 +252,8 @@ def _run_with_model(model: str, task: str) -> None:
         ),
     )
     print(f"🤖 Agent starter ({model})...")
-    response = chat.send_message(task)
+    with Heartbeat("Gemini arbejder"):
+        response = chat.send_message(task)
     print(f"\n🤖 {response.text}")
 
 
@@ -233,9 +273,10 @@ def main():
     global client
     # Læser GEMINI_API_KEY fra miljøet. Prøver selv igen ved overbelastning.
     client = genai.Client(http_options=types.HttpOptions(
+        timeout=90_000,  # ms – giv op på et kald efter 90 sek.
         retry_options=types.HttpRetryOptions(
-            attempts=4, initial_delay=3, max_delay=30,
-            http_status_codes=[429, 500, 503],
+            attempts=3, initial_delay=3, max_delay=20,
+            http_status_codes=[429, 500, 503, 504],
         )
     ))
     run(args.topic)
