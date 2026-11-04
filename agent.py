@@ -21,13 +21,16 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 import fb_post
 
 load_dotenv()
 
 MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+# Reservemodeller hvis hovedmodellen er overbelastet (503/429). Kommasepareret.
+FALLBACK_MODELS = [m.strip() for m in os.getenv(
+    "GEMINI_FALLBACK_MODELS", "gemini-flash-lite-latest").split(",") if m.strip()]
 PROFILE_PATH = Path(__file__).with_name("page_profile.md")
 ARTICLES_DIR = Path(__file__).with_name("articles")
 DRY_RUN = False
@@ -166,8 +169,23 @@ Svar til sidst med én kort linje om hvad der skete."""
 
 
 def run(topic: str | None) -> None:
+    global MODEL
+    task = f"Lav et opslag om: {topic}" if topic else "Find selv et emne og lav et opslag."
+    for model in [MODEL, *FALLBACK_MODELS]:
+        MODEL = model  # research_topic bruger samme model
+        try:
+            _run_with_model(model, task)
+            return
+        except errors.APIError as e:
+            if e.code not in (429, 500, 503):
+                raise
+            print(f"⚠️  {model} er utilgængelig ({e.code}). Prøver næste model...")
+    sys.exit("Alle modeller er overbelastede lige nu. Prøv igen om lidt.")
+
+
+def _run_with_model(model: str, task: str) -> None:
     chat = client.chats.create(
-        model=MODEL,
+        model=model,
         config=types.GenerateContentConfig(
             system_instruction=build_system_prompt(),
             tools=[get_recent_posts, list_articles, read_article,
@@ -177,8 +195,7 @@ def run(topic: str | None) -> None:
             ),
         ),
     )
-    task = f"Lav et opslag om: {topic}" if topic else "Find selv et emne og lav et opslag."
-    print(f"🤖 Agent starter ({MODEL})...")
+    print(f"🤖 Agent starter ({model})...")
     response = chat.send_message(task)
     print(f"\n🤖 {response.text}")
 
@@ -197,7 +214,13 @@ def main():
         sys.exit("Sæt FB_PAGE_ID og FB_PAGE_TOKEN i .env")
 
     global client
-    client = genai.Client()  # læser GEMINI_API_KEY fra miljøet
+    # Læser GEMINI_API_KEY fra miljøet. Prøver selv igen ved overbelastning.
+    client = genai.Client(http_options=types.HttpOptions(
+        retry_options=types.HttpRetryOptions(
+            attempts=4, initial_delay=3, max_delay=30,
+            http_status_codes=[429, 500, 503],
+        )
+    ))
     run(args.topic)
 
 
