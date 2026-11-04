@@ -133,6 +133,25 @@ def research_topic(topic: str) -> str:
         return f"Research fejlede: {e}"
 
 
+def _hashtags_before_cta(message: str) -> str:
+    """Flyt hashtag-linjer op foran en afsluttende "Læs ..."-linje, så opslaget
+    slutter med opfordringen lige over link-kortet."""
+    lines = message.splitlines()
+    tags = [l for l in lines if l.strip() and all(w.startswith("#") for w in l.split())]
+    cta_idx = next((i for i, l in enumerate(lines) if l.strip().lower().startswith("læs")), None)
+    if not tags or cta_idx is None:
+        return message
+    if all(lines.index(t) < cta_idx for t in tags):
+        return message
+    rest = [l for l in lines if l not in tags]
+    cta_idx = next(i for i, l in enumerate(rest) if l.strip().lower().startswith("læs"))
+    out = rest[:cta_idx] + tags + [""] + rest[cta_idx:]
+    text = "\n".join(out)
+    while "\n\n\n" in text:
+        text = text.replace("\n\n\n", "\n\n")
+    return text.strip()
+
+
 def publish_post(message: str, link: str = "") -> str:
     """Viser opslaget for brugeren og poster det på Facebook-siden, hvis brugeren
     godkender. Hvis brugeren skriver rettelser, får du dem tilbage – lav så et
@@ -151,6 +170,7 @@ def publish_post(message: str, link: str = "") -> str:
         while "\n\n\n" in message:
             message = message.replace("\n\n\n", "\n\n")
         message = message.strip()
+        message = _hashtags_before_cta(message)
     print("\n" + "=" * 60)
     print(message)
     if link:
@@ -253,6 +273,11 @@ def run(topic: str | None) -> None:
     sys.exit("Alle modeller er overbelastede lige nu. Prøv igen om lidt.")
 
 
+TOOLS = [sync_medium, get_recent_posts, list_articles, read_article,
+         research_topic, publish_post]
+MAX_STEPS = 20
+
+
 def _run_with_model(model: str, task: str, thinking_level: str) -> None:
     chat = client.chats.create(
         model=model,
@@ -260,16 +285,37 @@ def _run_with_model(model: str, task: str, thinking_level: str) -> None:
             thinking_config=(types.ThinkingConfig(thinking_level=thinking_level)
                              if thinking_level else None),
             system_instruction=build_system_prompt(),
-            tools=[sync_medium, get_recent_posts, list_articles, read_article,
-                   research_topic, publish_post],
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                maximum_remote_calls=20
-            ),
+            tools=TOOLS,
+            # Vi kører værktøjerne selv, så vi kan stoppe så snart opslaget er
+            # postet/afvist – i stedet for at vente på modellens afsluttende svar.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         ),
     )
+    tools = {f.__name__: f for f in TOOLS}
     print(f"🤖 Agent starter ({model})...")
-    with Heartbeat("Gemini arbejder"):
-        chat.send_message(task)
+
+    message = task
+    for _ in range(MAX_STEPS):
+        with Heartbeat("Gemini arbejder"):
+            response = chat.send_message(message)
+        calls = response.function_calls or []
+        if not calls:
+            break  # modellen er færdig uden flere værktøjskald
+
+        parts = []
+        for call in calls:
+            fn = tools.get(call.name)
+            try:
+                result = fn(**(call.args or {})) if fn else f"Ukendt værktøj: {call.name}"
+            except Exception as e:
+                result = f"Fejl i {call.name}: {e}"
+            parts.append(types.Part.from_function_response(
+                name=call.name, response={"result": result}))
+
+        if OUTCOME:
+            break  # postet, afvist, dry-run eller fejl – intet mere at vente på
+        message = parts
+
     # Status kommer fra koden – modellens egen opsummering kan være forkert
     print("\n" + (OUTCOME or "⚠️  Agenten nåede ikke frem til et udkast. Intet blev postet."))
 

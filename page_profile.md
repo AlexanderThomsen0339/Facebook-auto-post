@@ -23,5 +23,7 @@ egne artikler (se mappen articles/).
 - Dansk, levende og fortællende – en skarp krog i første linje
 - 80-200 ord
 - Max 1-2 emojis, 2-4 relevante hashtags til sidst
-- Gerne et spørgsmål til læserne til sidst for at skabe engagement
+- Gerne et spørgsmål til læserne for at skabe engagement
+- Rækkefølge i bunden: spørgsmål → hashtags → "Læs hele artiklen 👇" som allersidste linje
+  (link-kortet til Medium vises lige under)
 - Kun fakta der står i artiklerne eller er verificeret via research – ingen opdigtede tal
