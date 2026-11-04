@@ -40,6 +40,7 @@ THINKING_LEVEL = os.getenv("GEMINI_THINKING", "low")
 PROFILE_PATH = Path(__file__).with_name("page_profile.md")
 ARTICLES_DIR = Path(__file__).with_name("articles")
 DRY_RUN = False
+OUTCOME: str | None = None  # sættes af publish_post – den rigtige status, ikke modellens
 
 client: genai.Client | None = None  # oprettes i main()
 
@@ -156,7 +157,9 @@ def publish_post(message: str, link: str = "") -> str:
         print(f"\n🔗 {link}")
     print("=" * 60)
 
+    global OUTCOME
     if DRY_RUN:
+        OUTCOME = "🧪 Dry-run: udkastet blev vist, men IKKE postet. Kør uden --dry-run for at poste."
         return "Dry-run: opslaget blev ikke postet. Stop her."
 
     WAITING_FOR_USER.set()
@@ -168,11 +171,13 @@ def publish_post(message: str, link: str = "") -> str:
         try:
             result = fb_post.post_text(message, link or None)
         except Exception as e:
+            OUTCOME = f"⚠️  Fejl ved postning: {e}"
             return f"Fejl ved postning: {e}"
         url = f"https://www.facebook.com/{result.get('id')}"
-        print(f"✅ Postet: {url}")
+        OUTCOME = f"✅ Postet: {url}"
         return f"Opslaget er postet: {url}. Opgaven er færdig."
     if answer.lower() in ("n", "nej", "no", ""):
+        OUTCOME = "❌ Du afviste opslaget. Intet blev postet."
         return "Brugeren afviste opslaget. Stop og post ikke noget."
     return f"Brugeren vil have disse rettelser: {answer}. Lav et nyt udkast og kald publish_post igen."
 
@@ -264,8 +269,9 @@ def _run_with_model(model: str, task: str, thinking_level: str) -> None:
     )
     print(f"🤖 Agent starter ({model})...")
     with Heartbeat("Gemini arbejder"):
-        response = chat.send_message(task)
-    print(f"\n🤖 {response.text}")
+        chat.send_message(task)
+    # Status kommer fra koden – modellens egen opsummering kan være forkert
+    print("\n" + (OUTCOME or "⚠️  Agenten nåede ikke frem til et udkast. Intet blev postet."))
 
 
 def main():
