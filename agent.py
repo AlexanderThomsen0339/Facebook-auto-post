@@ -29,6 +29,7 @@ load_dotenv()
 
 MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 PROFILE_PATH = Path(__file__).with_name("page_profile.md")
+ARTICLES_DIR = Path(__file__).with_name("articles")
 DRY_RUN = False
 
 client: genai.Client | None = None  # oprettes i main()
@@ -53,6 +54,33 @@ def get_recent_posts(limit: int = 15) -> str:
         f"[{p.get('created_time', '')[:10]}] {p.get('message', '(intet tekstindhold)')[:300]}"
         for p in posts
     )
+
+
+def list_articles() -> str:
+    """Viser sidens egne artikler (filnavn, titel, dato). Brug dem som primær
+    kilde til opslag."""
+    print("🔧 Lister artikler...")
+    rows = []
+    for f in sorted(ARTICLES_DIR.glob("*.md")):
+        lines = f.read_text(encoding="utf-8").splitlines()
+        title = lines[0].lstrip("# ").strip() if lines else f.stem
+        meta = {l.split(":", 1)[0]: l.split(":", 1)[1].strip()
+                for l in lines[1:6] if ":" in l}
+        rows.append(f"- {f.name}: {title} (udgivet {meta.get('udgivet', '?')})")
+    return "\n".join(rows) or "Ingen artikler fundet."
+
+
+def read_article(filename: str) -> str:
+    """Læser hele teksten i én af sidens artikler.
+
+    Args:
+        filename: Filnavnet fra list_articles, fx "romerrigets-inflation.md".
+    """
+    print(f"🔧 Læser artikel: {filename}")
+    path = (ARTICLES_DIR / Path(filename).name)
+    if not path.exists():
+        return f"Artiklen {filename} findes ikke. Brug list_articles."
+    return path.read_text(encoding="utf-8")
 
 
 def research_topic(topic: str) -> str:
@@ -122,10 +150,16 @@ def build_system_prompt() -> str:
 
 Sådan arbejder du:
 1. Kald get_recent_posts for at se hvad der allerede er skrevet.
-2. Hvis brugeren ikke har givet et emne, så vælg ét inden for sidens emner,
-   som ikke er dækket i de seneste opslag.
-3. Kald research_topic for at få fakta. Brug kun fakta fra researchen.
-4. Skriv opslaget efter sidens tone og format.
+2. Kald list_articles. Sidens egne artikler er din primære kilde.
+   - Har brugeren givet et emne: find den artikel der passer bedst.
+   - Ellers: vælg en artikel og en vinkel der ikke er dækket i de seneste opslag.
+     Én artikel kan give mange opslag med forskellige vinkler (et tal, en
+     anekdote, en parallel til i dag).
+3. Kald read_article og byg opslaget på artiklens indhold.
+   Brug kun research_topic hvis artiklen ikke dækker emnet, eller et faktum
+   skal tjekkes. Opfind aldrig tal.
+4. Skriv opslaget efter sidens tone og format. Hvis artiklen har en url,
+   så giv den med som link i publish_post.
 5. Kald publish_post med teksten. Post aldrig uden at kalde publish_post.
 6. Følg svaret fra publish_post: ret og prøv igen, eller stop.
 Svar til sidst med én kort linje om hvad der skete."""
@@ -136,7 +170,8 @@ def run(topic: str | None) -> None:
         model=MODEL,
         config=types.GenerateContentConfig(
             system_instruction=build_system_prompt(),
-            tools=[get_recent_posts, research_topic, publish_post],
+            tools=[get_recent_posts, list_articles, read_article,
+                   research_topic, publish_post],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(
                 maximum_remote_calls=20
             ),

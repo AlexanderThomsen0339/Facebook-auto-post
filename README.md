@@ -5,6 +5,7 @@ AI-agent (Gemini) der laver indhold til en Facebook-side og poster det via Meta 
 - `agent.py` – agenten. Finder emne, researcher med Google Search, skriver opslaget og spørger dig før det postes.
 - `fb_post.py` – værktøjet der poster (kan også bruges alene).
 - `page_profile.md` – hvad siden handler om, emner, tone og format. Agenten holder sig inden for den.
+- `articles/` – dine egne artikler som `.md`. Agenten bygger opslag på dem. Tilføj nye artikler her (første linje `# Titel`, derefter `udgivet:` og evt. `url:` til Medium-linket).
 
 ## Agenten
 
