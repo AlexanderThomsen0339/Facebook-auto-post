@@ -213,7 +213,9 @@ def build_system_prompt() -> str:
 Sådan arbejder du:
 1. Kald sync_medium og get_recent_posts.
 2. Kald list_articles. Sidens egne artikler er din primære kilde.
-   - Har brugeren givet et emne: find den artikel der passer bedst.
+   - Har brugeren givet et emne: find den artikel der handler om DET emne.
+     Findes der ingen artikel om emnet, så byg opslaget på research_topic og
+     giv INTET link – link aldrig til en artikel om et andet emne.
    - Ellers: prioritér nye artikler, som siden endnu ikke har lavet opslag om.
      Ellers vælg en artikel og en vinkel der ikke er dækket i de seneste opslag.
      Én artikel kan give mange opslag med forskellige vinkler (et tal, en
