@@ -6,6 +6,7 @@ Kræver i .env:
 
 Brug:
     python medium_sync.py                # hent nye artikler
+    python medium_sync.py --list         # vis hvad der ligger i feedet (fejlfinding)
 
 Bemærk: Mediums RSS-feed indeholder kun dine ~10 seneste artikler.
 Artikler bag Mediums betalingsmur kan komme med som et uddrag – de markeres
@@ -145,6 +146,27 @@ def sync(username: str | None = None) -> list[str]:
     return changes
 
 
+def list_feed(username: str | None = None) -> None:
+    """Vis hvad Medium-feedet indeholder lige nu (til fejlfinding)."""
+    username = (username or os.getenv("MEDIUM_USERNAME", "")).lstrip("@").strip()
+    url = f"https://medium.com/feed/@{username}"
+    print(f"Feed: {url}")
+    resp = requests.get(url, headers=HEADERS, timeout=30)
+    print(f"HTTP {resp.status_code}")
+    resp.raise_for_status()
+    existing = _existing_titles()
+    items = parse_feed(resp.text)
+    print(f"{len(items)} artikler i feedet:\n")
+    for a in items:
+        status = "har den" if a["title"].lower() in existing else "NY"
+        print(f"  [{status:7}] {a['date']:12}  {a['title']}")
+        print(f"            {a['url']}")
+
+
 if __name__ == "__main__":
-    result = sync()
-    print("\n".join(result) if result else "Ingen nye artikler.")
+    import sys
+    if "--list" in sys.argv:
+        list_feed()
+    else:
+        result = sync()
+        print("\n".join(result) if result else "Ingen nye artikler.")
