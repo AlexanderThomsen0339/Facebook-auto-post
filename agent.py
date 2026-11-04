@@ -152,6 +152,16 @@ def _hashtags_before_cta(message: str) -> str:
     return text.strip()
 
 
+def _known_article_urls() -> set[str]:
+    """Alle url'er der står i artikel-filerne – de eneste links agenten må bruge."""
+    urls = set()
+    for f in ARTICLES_DIR.glob("*.md"):
+        for line in f.read_text(encoding="utf-8").splitlines()[:6]:
+            if line.startswith("url:") and line[4:].strip():
+                urls.add(unquote(line[4:].strip()).split("?")[0].rstrip("/"))
+    return urls
+
+
 def publish_post(message: str, link: str = "") -> str:
     """Viser opslaget for brugeren og poster det på Facebook-siden, hvis brugeren
     godkender. Hvis brugeren skriver rettelser, får du dem tilbage – lav så et
@@ -162,6 +172,10 @@ def publish_post(message: str, link: str = "") -> str:
             giv den i link, så viser Facebook den som et kort med billede.
         link: Valgfri URL der skal deles med opslaget.
     """
+    if link and unquote(link).split("?")[0].rstrip("/") not in _known_article_urls():
+        print(f"⚠️  Ukendt link fjernet (ikke fra dine artikler): {link}")
+        message = message.replace(link, "").replace(unquote(link), "")
+        link = ""
     if link:
         # Fjern url'en fra teksten (rå eller %-kodet) – Facebook viser den som kort
         for u in {link, unquote(link)}:
