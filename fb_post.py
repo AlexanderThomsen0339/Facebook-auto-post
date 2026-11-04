@@ -68,6 +68,16 @@ def post_photo(message: str, photo_path: str, schedule: datetime | None = None) 
     return _check(resp)
 
 
+def get_recent_posts(limit: int = 15) -> list[dict]:
+    """Hent sidens seneste opslag (tekst + tidspunkt)."""
+    data = _check(requests.get(f"{GRAPH}/{PAGE_ID}/posts", params={
+        "fields": "message,created_time,permalink_url",
+        "limit": limit,
+        "access_token": PAGE_TOKEN,
+    }, timeout=30))
+    return data.get("data", [])
+
+
 def get_long_lived_page_token(short_user_token: str) -> str:
     """
     Byt et kortlivet user token (fra Graph API Explorer) til et Page token,

@@ -1,6 +1,22 @@
 # Facebook auto post
 
-Python-script der poster på en Facebook-side via Meta Graph API (tekst, links, billeder og planlagte opslag).
+AI-agent (Gemini) der laver indhold til en Facebook-side og poster det via Meta Graph API – med godkendelse før hvert opslag.
+
+- `agent.py` – agenten. Finder emne, researcher med Google Search, skriver opslaget og spørger dig før det postes.
+- `fb_post.py` – værktøjet der poster (kan også bruges alene).
+- `page_profile.md` – hvad siden handler om, emner, tone og format. Agenten holder sig inden for den.
+
+## Agenten
+
+```
+python agent.py                    # agenten finder selv et emne
+python agent.py "Tulipanmanien"    # du giver emnet
+python agent.py --dry-run          # kun udkast, intet postes
+```
+
+Ved hvert udkast svarer du `j` (post), `n` (drop) eller skriver rettelser, så laver agenten et nyt udkast.
+
+Kræver `GEMINI_API_KEY` i `.env` (hent den på https://aistudio.google.com/apikey).
 
 ## Opsætning
 
@@ -17,7 +33,7 @@ python fb_post.py --get-token <kortlivet user token>
 ```
 Kopiér tokenet for din side ind i `.env` som `FB_PAGE_TOKEN`.
 
-## Brug
+## fb_post.py alene
 
 ```
 python fb_post.py "Hej fra Python!"
