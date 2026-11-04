@@ -15,7 +15,7 @@ Eksempler:
     python fb_post.py "Se vores nye side" --link https://example.com
     python fb_post.py "Nyt billede" --photo billede.jpg
     python fb_post.py "Planlagt opslag" --schedule "2026-11-10 09:00"
-    python fb_post.py --get-token EAAG...kortlivet_user_token
+    python fb_post.py --get-token        (du bliver spurgt om dit user token)
 """
 
 import argparse
@@ -100,12 +100,14 @@ def main():
     ap.add_argument("--link", help="URL der skal deles")
     ap.add_argument("--photo", help="Sti til et billede")
     ap.add_argument("--schedule", help='Planlæg opslag, fx "2026-11-10 09:00" (lokal tid)')
-    ap.add_argument("--get-token", metavar="USER_TOKEN",
-                    help="Byt kortlivet user token til permanent Page token")
+    ap.add_argument("--get-token", metavar="USER_TOKEN", nargs="?", const="",
+                    help="Byt kortlivet user token til permanent Page token "
+                         "(udelad værdien for at blive spurgt)")
     args = ap.parse_args()
 
-    if args.get_token:
-        get_long_lived_page_token(args.get_token)
+    if args.get_token is not None:
+        token = args.get_token or input("Indsæt dit user token (starter med EAA): ")
+        get_long_lived_page_token(token.strip().strip('"').strip())
         return
 
     if not (PAGE_ID and PAGE_TOKEN):
