@@ -45,3 +45,13 @@ python fb_post.py "Planlagt" --schedule "2026-11-10 09:00"
 ```
 
 > `.env` er i `.gitignore` – commit aldrig dine tokens.
+
+## Kør automatisk hver dag (Windows)
+
+```
+powershell -ExecutionPolicy Bypass -File setup_schedule.ps1              # kl. 09:00
+powershell -ExecutionPolicy Bypass -File setup_schedule.ps1 -Time 08:30  # andet tidspunkt
+powershell -ExecutionPolicy Bypass -File setup_schedule.ps1 -Remove      # fjern igen
+```
+
+Der åbner et vindue med agenten på det valgte tidspunkt. Den henter nye Medium-artikler, laver et udkast og venter på dit `j`/`n`/rettelser. Kører kun når computeren er tændt og du er logget ind; var den slukket, kører den når du logger ind.
